@@ -1,0 +1,7 @@
+# BTC LOTTERY - Seed Round with Chainlink Price Feeds and Vesting
+
+# BTCLTOKEN - Test Deployment for BTCLTOKEN
+# MOCKERC20 - Test Deployment for (WBTC,WETH,LINK,BNB,UNI,DAI,USDC,USDT)
+# SEEDROUND - Test Deployment for BTCL Token Seed Round
+
+Add your own Private Key to truffle-config.js and deploy all tokens to Kovan Testnet and check
