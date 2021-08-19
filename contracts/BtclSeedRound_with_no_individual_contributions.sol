@@ -60,12 +60,6 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         uint256 totalClaimedBTCL;     // Total BTCL Tokens Claimed
         uint256 totalUSDContributed;  // Total USD Contribution in decimals
         uint256 lastRewardBlock;      // Last Block when Tokens were Claimed
-    }    
-    
-    struct UserContribution {
-        address token;
-        uint256 tokenAmount;
-        uint256 tokenInUSD;
     }
     
     uint256 public btclDistributed;
@@ -80,9 +74,8 @@ contract BtclSeedRound is Context, ReentrancyGuard {
     
     mapping(address => bool) private kyc;
     mapping(address => UserInfo) public userInfo;
-    mapping(address => mapping(uint256 => UserContribution)) public userContribution;
-    mapping(address => mapping(uint256 => uint256)) public totalBTCL; // Total BTCL Tokens released each stage
     mapping(address => address) public tokensAndFeeds;
+    mapping(address => mapping(uint256 => uint256)) public totalBTCL; // Total BTCL Tokens released each stage
     
     modifier onlyTeam() {
         require(wallet == _msgSender(), "Only the team wallet can run this function");
@@ -160,29 +153,35 @@ contract BtclSeedRound is Context, ReentrancyGuard {
     function _createPayment(address _beneficiary, address _asset, uint256 _value) private {
         (, uint256 toContribute, uint256 toDistribute) = getTokenExchangeRate(_asset, _value);
 
-        makeTokenContribution(_beneficiary, _asset, toContribute, _value);
-        
-        splitTokensInStages(toDistribute);
-        
-        hydrateContribution(_beneficiary, _asset, toContribute, toDistribute, _value); 
-        
-        // EMIT & RETURN TRUE IF CONTRIBUTION SUCCEEDED
-        emit TokensPurchased(_beneficiary, toDistribute, _value);
-    }
-
-    /**
-     * Helper function that checks token allowance and makes the contribution.
-     * @param _beneficiary the address of the contributor.
-     * @param _asset the asset used to contribute.
-     * @param _toContribute the amount contributed.
-     */
-    function makeTokenContribution(address _beneficiary, address _asset, uint256 _toContribute, uint256 _value) private {
         UserInfo storage user = userInfo[_beneficiary];
         
         // CHECK IF 10K LIMIT HAS BEEN REACHED
         uint256 newUSDValue = user.totalUSDContributed.add(_value);
         require(newUSDValue <= kycUsdLimit, "Address can't contribute more than 10K USD.");
         
+        makeTokenContribution(_beneficiary, _asset, toContribute);
+        
+        splitTokensInStages(toDistribute);
+        
+        // HYDRATE USER CONTRIBUTION
+        user.totalLockedBTCL = user.totalLockedBTCL.add(toDistribute);
+        user.totalUSDContributed = newUSDValue;
+        
+        // TOTAL BTCL TO DISTRIBUTE & TOTAL RAISED IN USD
+        btclDistributed = btclDistributed.add(toDistribute);
+        totalRaised = totalRaised.add(_value);
+        
+        // EMIT & RETURN TRUE IF CONTRIBUTION SUCCEEDED
+        emit TokensPurchased(_beneficiary, toDistribute, _value);
+    }
+    
+    /**
+     * Helper function that checks token allowance and makes the contribution.
+     * @param _beneficiary the address of the contributor.
+     * @param _asset the asset used to contribute.
+     * @param _toContribute the amount contributed.
+     */
+    function makeTokenContribution(address _beneficiary, address _asset, uint256 _toContribute) private {
         uint256 allowance = IERC677(_asset).allowance(_beneficiary, address(this));
         require(allowance >= _toContribute, "Check the token allowance");
         
@@ -199,33 +198,6 @@ contract BtclSeedRound is Context, ReentrancyGuard {
             uint256 tempBTCL = _toDistribute.mul(vestingPercentages[i]).div(100);
             totalBTCL[_msgSender()][i] = tempBTCL.add(storedBTCL);
         }
-    }
-
-    /**
-     * Helper function that updates individual and global variables.
-     * @param _beneficiary the address of the contributor.
-     * @param _asset the asset used to contribute.
-     * @param _toContribute the amount contributed.
-     * @param _toDistribute total BTCL Tokens that will be distributed.
-     * @param _value The total amount in USD Contributed.
-     */
-    function hydrateContribution(address _beneficiary, address _asset, uint256 _toContribute, uint256 _toDistribute, uint256 _value) private {
-        UserInfo storage user = userInfo[_beneficiary];
-        UserContribution storage contribution = userContribution[_beneficiary][user.totalContributions];
-        
-        // HYDRATE USER CONTRIBUTION
-        user.totalContributions = user.totalContributions.add(1);
-        user.totalLockedBTCL = user.totalLockedBTCL.add(_toDistribute);
-        user.totalUSDContributed = user.totalUSDContributed.add(_value);
-        
-        // TOTAL BTCL TO DISTRIBUTE & TOTAL RAISED IN USD
-        btclDistributed = btclDistributed.add(_toDistribute);
-        totalRaised = totalRaised.add(_value);
-        
-        // HYDRATE INDIVIDUAL CONTRIBUTION
-        contribution.token = _asset;
-        contribution.tokenAmount = _toContribute;
-        contribution.tokenInUSD = _value;
     }
     
     /**

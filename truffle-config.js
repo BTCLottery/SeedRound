@@ -2,7 +2,7 @@ const HDWalletProvider = require('@truffle/hdwallet-provider');
 
 const provider = new HDWalletProvider(
   ['YOUR PRIVATE KEY HERE'],
-  "https://kovan.infura.io/v3/4c65cab24c974638ab3923b95ed43af7"
+  'YOUR INFURA API KEY HERE'
 );
 
 module.exports = {
