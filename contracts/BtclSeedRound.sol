@@ -66,6 +66,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         address token;
         uint256 tokenAmount;
         uint256 tokenInUSD;
+        uint256 time;
     }
     
     uint256 public btclDistributed;
@@ -226,6 +227,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         contribution.token = _asset;
         contribution.tokenAmount = _toContribute;
         contribution.tokenInUSD = _value;
+        contribution.time = now;
     }
     
     /**
