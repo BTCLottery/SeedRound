@@ -64,9 +64,10 @@ contract BtclSeedRound is Context, ReentrancyGuard {
     
     struct UserContribution {
         address token;
-        uint256 tokenAmount;
-        uint256 tokenInUSD;
         uint256 time;
+        uint256 tokenInUSD;
+        uint256 tokenAmount;
+        uint256 btclToDistribute;
     }
     
     uint256 public btclDistributed;
@@ -225,9 +226,10 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         
         // HYDRATE INDIVIDUAL CONTRIBUTION
         contribution.token = _asset;
-        contribution.tokenAmount = _toContribute;
-        contribution.tokenInUSD = _value;
         contribution.time = now;
+        contribution.tokenInUSD = _value;
+        contribution.tokenAmount = _toContribute;
+        contribution.btclToDistribute = _toDistribute;
     }
     
     /**
