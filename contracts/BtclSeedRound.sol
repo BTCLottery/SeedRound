@@ -59,15 +59,16 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         uint256 totalLockedBTCL;      // Total BTCL Tokens left to be released
         uint256 totalClaimedBTCL;     // Total BTCL Tokens Claimed
         uint256 totalUSDContributed;  // Total USD Contribution in decimals
+        uint256 totalContributions;   // Total Number of Token Contributions
         uint256 lastRewardBlock;      // Last Block when Tokens were Claimed
-    }    
+    }
     
     struct UserContribution {
-        address token;
-        uint256 time;
-        uint256 tokenInUSD;
-        uint256 tokenAmount;
-        uint256 btclToDistribute;
+        address token;                // Individual Token Address
+        uint256 time;                 // Individual Contribution Timestamp
+        uint256 tokenInUSD;           // Individual Token USD Value
+        uint256 tokenAmount;          // Individual Token Contribution
+        uint256 btclToDistribute;     // Individual BTCL Tokens to be distributed
     }
     
     uint256 public btclDistributed;
@@ -92,7 +93,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
     }
     
     // TOKENS AND PRICE FEEDS
-    // 0, 0, 0, 0, _btclToken, ["0x9Bf27E57245DD4232C018f2097b1e999A7161a3B", "0x8ee34E67763cE078Ffced75B3F6A5ac151f5Db33", "0xa36085F69e2889c224210F603D836748e7dC0088", "0x4260931D230F7a66691aBbFe9aaFb25B2F5B55A8", "0x2dE19249451741935003E1BF819E0dBb3010463d", "0xb3A570feDE54326Aa5Cc66D6C03bC3c72A6E4C86", "0xFfA962796FC63611f8bCc53Fbb24CbA1CB53b273", "0xDc3d34839ba29c76FA295640CE3A07b77FfA8AD9"], ["0x6135b13325bfC4B00278B4abC5e20bbce2D6580e", "0x9326BFA02ADD2366b30bacB125260Af641031331", "0x396c5E36DD0a0F5a5D33dae44368D4193f69a1F0", "0x8993ED705cdf5e84D0a3B754b5Ee0e1783fcdF16", "0xDA5904BdBfB4EF12a3955aEcA103F51dc87c7C39", "0x777A68032a88E5A84678A77Af2CD65A7b3c0775a", "0x9211c6b3BF41A10F78539810Cf5c64e1BB78Ec60", "0x2ca5A90D34cA333661083F89D831f757A9A50148"]
+    // 0, 0, 0, 0, 0xc41B5fC87CB08b7C96db7F7d5c83C5729A5c6634, ["0x9Bf27E57245DD4232C018f2097b1e999A7161a3B", "0x8ee34E67763cE078Ffced75B3F6A5ac151f5Db33", "0xa36085F69e2889c224210F603D836748e7dC0088", "0x4260931D230F7a66691aBbFe9aaFb25B2F5B55A8", "0x2dE19249451741935003E1BF819E0dBb3010463d", "0xb3A570feDE54326Aa5Cc66D6C03bC3c72A6E4C86", "0xFfA962796FC63611f8bCc53Fbb24CbA1CB53b273", "0xDc3d34839ba29c76FA295640CE3A07b77FfA8AD9"], ["0x6135b13325bfC4B00278B4abC5e20bbce2D6580e", "0x9326BFA02ADD2366b30bacB125260Af641031331", "0x396c5E36DD0a0F5a5D33dae44368D4193f69a1F0", "0x8993ED705cdf5e84D0a3B754b5Ee0e1783fcdF16", "0xDA5904BdBfB4EF12a3955aEcA103F51dc87c7C39", "0x777A68032a88E5A84678A77Af2CD65A7b3c0775a", "0x9211c6b3BF41A10F78539810Cf5c64e1BB78Ec60", "0x2ca5A90D34cA333661083F89D831f757A9A50148"]
     constructor(uint256 _startBlock, uint256 _endBlock, uint256 _cliffEndingBlock, uint256 _blocksPerMonth, address _btclToken, IERC677[] memory assets, address[] memory priceOracles) public {
         btclToken = IERC677(_btclToken);
         wallet = _msgSender();
@@ -112,7 +113,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
     }
     
     /*
-     * Aggregate the value in USD for any whitelisted token.
+     * Aggregate the value for whitelisted tokens.
      * @param _asset the token to be contributed.
      * @param _amount the amount of the token contribution.
      * @return totalUSD and toContribute and toDistribute 
@@ -122,17 +123,26 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         
         (, int256 price_token, , , ) = AggregatorV3Interface(tokensAndFeeds[_asset]).latestRoundData();
         (, int256 price_dai, , , ) = AggregatorV3Interface(0x777A68032a88E5A84678A77Af2CD65A7b3c0775a).latestRoundData();
-            
-        uint256 precission = 1e2;
-        totalUSD = uint256(price_token).mul(1 ether).mul(precission).div(uint256(price_dai)).div(1 ether); // wbtc with 1e2 precission added
-        toDistribute = _amount.mul(66666666666666666666); // Seed Round Tokens / 0.015$ - For each dollar you receive 66.6 BTCL Tokens
         
         if(_asset == 0xDc3d34839ba29c76FA295640CE3A07b77FfA8AD9 || _asset == 0xFfA962796FC63611f8bCc53Fbb24CbA1CB53b273) { // usdt & usdc
-            toContribute = 1000000;
+            require(_amount >= 100, "Contribution amount must be atleast 100$ and max 10K USD worth.");
+            toContribute = _amount.mul(1000000);                // 1$
+            toDistribute = _amount.mul(66666666666666666666);   // 66.6 BTCL
+            totalUSD = _amount;
         } else if (_asset == 0xb3A570feDE54326Aa5Cc66D6C03bC3c72A6E4C86) { // dai
-            toContribute = 1000000000000000000;
+            require(_amount >= 100, "Contribution amount must be atleast 100$ and max 10K USD worth.");
+            toContribute = _amount.mul(1000000000000000000);    // 1$
+            toDistribute = _amount.mul(66666666666666666666);   // 66.6 BTCL
+            totalUSD = _amount;
         } else {
-            toContribute = uint256(10 ** uint256(IERC677(_asset).decimals())).mul(_amount).mul(precission).div(totalUSD).add(1);
+            uint256 precission = 1e2;
+            uint256 tokenDecimals = uint256(10 ** uint256(IERC677(_asset).decimals()));
+            uint256 tokenValueInUSD = uint256(price_token).div(uint256(price_dai));
+            uint256 tokenOneDollarWorth = tokenDecimals.mul(tokenDecimals).div(tokenValueInUSD).div(tokenDecimals); // one dollar in anything except stablecoins
+            totalUSD = _amount.div(tokenOneDollarWorth); // 1$
+            toContribute = _amount;
+            toDistribute = totalUSD.mul(precission).mul(66666666666666666666).div(precission); // = 66.6 BTCL
+            require(totalUSD >= 100, "Contribution amount must be atleast 100$ and max 10K USD worth.");
         }
         
     }
@@ -140,15 +150,16 @@ contract BtclSeedRound is Context, ReentrancyGuard {
     /*
      * Contribute any of the 8 Whitelisted Tokens (WBTC/WETH/LINK/BNB/UNI/DAI/USDC/USDT).
      * @param _asset the token used to make the contribution.
-     * @param _value the value in USD to be contributed.
+     * @param _value the value to be contributed.
      * @return success Contribution succeeded or failed.
      */
     function buyTokens(address _asset, uint256 _value) public nonReentrant returns (bool success) {
         require(block.number >= startBlock && block.number <= endBlock && btclDistributed < 250000000 * 1e18,"Seed Round finished successfully. Congrats to everyone!");
-        require(_value >= 100,"Contribution amount must be atleast 100$ and max 10K USD worth.");
         require(kyc[_msgSender()] == true, "Only Whitelisted addresses are allowed to participate in the Seed Round.");
 
-        _createPayment(_msgSender(), _asset, _value);
+        (uint256 totalUSD, uint256 toContribute, uint256 toDistribute) = getTokenExchangeRate(_asset, _value);
+        
+        _createPayment(_msgSender(), _asset, totalUSD, toContribute, toDistribute);
     
         return true;
     }
@@ -159,8 +170,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
      * @param asset The token used to Contribute.
      * @param value The total amount in USD Contributed.
      */
-    function _createPayment(address _beneficiary, address _asset, uint256 _value) private {
-        (, uint256 toContribute, uint256 toDistribute) = getTokenExchangeRate(_asset, _value);
+    function _createPayment(address _beneficiary, address _asset, uint256 _value, uint256 toContribute, uint256 toDistribute) private {
 
         makeTokenContribution(_beneficiary, _asset, toContribute, _value);
         
@@ -171,7 +181,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         // EMIT & RETURN TRUE IF CONTRIBUTION SUCCEEDED
         emit TokensPurchased(_beneficiary, toDistribute, _value);
     }
-
+    
     /**
      * Helper function that checks token allowance and makes the contribution.
      * @param _beneficiary the address of the contributor.
@@ -202,7 +212,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
             totalBTCL[_msgSender()][i] = tempBTCL.add(storedBTCL);
         }
     }
-
+    
     /**
      * Helper function that updates individual and global variables.
      * @param _beneficiary the address of the contributor.
