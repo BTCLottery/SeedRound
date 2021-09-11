@@ -73,7 +73,8 @@ contract BtclSeedRound is Context, ReentrancyGuard {
     
     uint256 public btclDistributed;
     uint256 public totalRaised;
-    uint256 public kycUsdLimit = 10000;
+    uint256 public kycUsdLimit = 1500000; // Max Contribution $15K with 2 extra decimals for precision
+    uint256 public kycLimitUplifted = 5000000; // Max Contribution $50K with 2 extra decimals for precision
     uint256 public blocksPerMonth = 206615;
     uint256 public startBlock = 13230000; // https://etherscan.io/block/countdown/13230000 (14 Sep 2021)
     uint256 public endBlock = 13840000; // https://etherscan.io/block/countdown/13840000 (15 Dec 2021)
@@ -82,7 +83,9 @@ contract BtclSeedRound is Context, ReentrancyGuard {
     uint256[12] public vestingPercentages = [24,5,5,5,5,5,5,5,5,12,12,12];
     
     mapping(address => bool) private kyc;
+    mapping(address => bool) private kycUplifted;
     mapping(address => UserInfo) public userInfo;
+    mapping(address => uint256) public totalContributions;
     mapping(address => mapping(uint256 => UserContribution)) public userContribution;
     mapping(address => mapping(uint256 => uint256)) public totalBTCL; // Total BTCL Tokens released each stage
     mapping(address => address) public tokensAndFeeds;
@@ -123,29 +126,16 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         
         (, int256 price_token, , , ) = AggregatorV3Interface(tokensAndFeeds[_asset]).latestRoundData();
         (, int256 price_dai, , , ) = AggregatorV3Interface(0x777A68032a88E5A84678A77Af2CD65A7b3c0775a).latestRoundData();
-        
-        if(_asset == 0xDc3d34839ba29c76FA295640CE3A07b77FfA8AD9 || _asset == 0xFfA962796FC63611f8bCc53Fbb24CbA1CB53b273) { // usdt & usdc
-            require(_amount >= 100, "Contribution amount must be atleast 100$ and max 10K USD worth.");
-            toContribute = _amount.mul(1000000);                // 1$
-            toDistribute = _amount.mul(66666666666666666666);   // 66.6 BTCL
-            totalUSD = _amount;
-        } else if (_asset == 0xb3A570feDE54326Aa5Cc66D6C03bC3c72A6E4C86) { // dai
-            require(_amount >= 100, "Contribution amount must be atleast 100$ and max 10K USD worth.");
-            toContribute = _amount.mul(1000000000000000000);    // 1$
-            toDistribute = _amount.mul(66666666666666666666);   // 66.6 BTCL
-            totalUSD = _amount;
-        } else {
-            uint256 precission = 1e2;
-            uint256 tokenDecimals = uint256(10 ** uint256(IERC677(_asset).decimals()));
-            uint256 tokenValueInUSD = uint256(price_token).div(uint256(price_dai));
-            uint256 tokenOneDollarWorth = tokenDecimals.mul(tokenDecimals).div(tokenValueInUSD).div(tokenDecimals); // one dollar in anything except stablecoins
-            totalUSD = _amount.div(tokenOneDollarWorth); // 1$
-            toContribute = _amount;
-            toDistribute = totalUSD.mul(precission).mul(66666666666666666666).div(precission); // = 66.6 BTCL
-            require(totalUSD >= 100, "Contribution amount must be atleast 100$ and max 10K USD worth.");
-        }
-        
+    
+        uint256 precission = 1e2;
+        uint256 tokenDecimals = uint256(10 ** uint256(IERC677(_asset).decimals()));
+        uint256 tokenValueInUSD = uint256(price_token).div(uint256(price_dai));
+        uint256 tokenOneDollarWorth = tokenDecimals.div(tokenValueInUSD);
+        totalUSD = _amount.mul(precission).div(tokenOneDollarWorth); // USD with 2 extra decimals
+        toContribute = _amount;
+        toDistribute = totalUSD.mul(66666666666666666666).div(precission); // 1$ = 66.6 BTCL
     }
+    
     
     /*
      * Contribute any of the 8 Whitelisted Tokens (WBTC/WETH/LINK/BNB/UNI/DAI/USDC/USDT).
@@ -158,6 +148,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         require(kyc[_msgSender()] == true, "Only Whitelisted addresses are allowed to participate in the Seed Round.");
 
         (uint256 totalUSD, uint256 toContribute, uint256 toDistribute) = getTokenExchangeRate(_asset, _value);
+        require(totalUSD >= 10000, "Contribution amount must be atleast 100$ and max 50K USD worth."); // 100$ with 2 decimals precission
         
         _createPayment(_msgSender(), _asset, totalUSD, toContribute, toDistribute);
     
@@ -191,9 +182,16 @@ contract BtclSeedRound is Context, ReentrancyGuard {
     function makeTokenContribution(address _beneficiary, address _asset, uint256 _toContribute, uint256 _value) private {
         UserInfo storage user = userInfo[_beneficiary];
         
-        // CHECK IF 10K LIMIT HAS BEEN REACHED
+        // CHECK IF 15K OR 50K UPLIFTED KYC LIMIT HAS BEEN REACHED 
         uint256 newUSDValue = user.totalUSDContributed.add(_value);
-        require(newUSDValue <= kycUsdLimit, "Address can't contribute more than 10K USD.");
+        
+        if(kyc[_beneficiary] == true) {
+            if(kycUplifted[_beneficiary] == true) {
+                require(newUSDValue <= kycLimitUplifted, "Address can't contribute more than 50K USD.");
+            } else {
+                require(newUSDValue <= kycUsdLimit, "Address can't contribute more than 15K USD.");    
+            }
+        }
         
         uint256 allowance = IERC677(_asset).allowance(_beneficiary, address(this));
         require(allowance >= _toContribute, "Check the token allowance");
@@ -235,6 +233,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         totalRaised = totalRaised.add(_value);
         
         // HYDRATE INDIVIDUAL CONTRIBUTION
+        totalContributions[_msgSender()] = totalContributions[_msgSender()].add(1);
         contribution.token = _asset;
         contribution.time = now;
         contribution.tokenInUSD = _value;
@@ -284,7 +283,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         
         for (uint8 i = 0; i < vestingSchedules.length; i++) {
             if (block.number >= vestingSchedules[i]) {
-                allowedPercent = vestingPercentages[i];
+                allowedPercent = allowedPercent.add(vestingPercentages[i]);
                 currentStage = i;
             }
         }
@@ -303,26 +302,28 @@ contract BtclSeedRound is Context, ReentrancyGuard {
      * @dev ETH cannot be sent directly. Only WETH is allowed!
      */
     receive() external payable {
-        revert("Contract only accepts Wrapped Ether.");
+        revert("Bitcoin Lottery - Seed Round Contract only accepts Wrapped Ether.");
     }
     
     /**
      * @dev KYC helper function used to display current KYC Status.
      * @param _contributorAddress The Contributor Address Whitelisting Address.
-     * @return bool KYC Whitelisting Status.
+     * @return whitelisted and KYC uplift Status.
      */
-    function checkKYC(address _contributorAddress) public view returns (bool) {
-        return kyc[_contributorAddress];
+    function checkKYC(address _contributorAddress) public view returns (bool whitelisted, bool uplifted) {
+        return (kyc[_contributorAddress], kycUplifted[_contributorAddress]);
     }
 
     /**
      * @dev KYC helper function used by the team to whitelist multiple addresses at once.
      * @param _addresses whitelisted address list.
-     * @param _actions whitelisted address status.
+     * @param _whitelisted whitelisted address can contribute up to $15K.
+     * @param _kycUplift whitelisted address sources of funds uplift max contribution up to $50K.
      */
-    function multiKycWhitelisting(address[] memory _addresses, bool[] memory _actions) public onlyTeam returns (bool success) {
+    function multiKycWhitelisting(address[] memory _addresses, bool[] memory _whitelisted, bool[] memory _kycUplift) public onlyTeam returns (bool success) {
         for (uint256 i = 0; i < _addresses.length; i++) {
-            kyc[_addresses[i]] = _actions[i];
+            kyc[_addresses[i]] = _whitelisted[i];
+            kycUplifted[_addresses[i]] = _kycUplift[i];
         }
         return true;
     }
