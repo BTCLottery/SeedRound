@@ -126,15 +126,25 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         
         (, int256 price_token, , , ) = AggregatorV3Interface(tokensAndFeeds[_asset]).latestRoundData();
         (, int256 price_dai, , , ) = AggregatorV3Interface(0x777A68032a88E5A84678A77Af2CD65A7b3c0775a).latestRoundData();
-    
-        uint256 precission = 1e2;
-        uint256 tokenDecimals = uint256(10 ** uint256(IERC677(_asset).decimals()));
-        uint256 tokenValueInUSD = uint256(price_token).div(uint256(price_dai));
-        uint256 tokenOneDollarWorth = tokenDecimals.div(tokenValueInUSD);
-        totalUSD = _amount.mul(precission).div(tokenOneDollarWorth); // USD with 2 extra decimals
-        toContribute = _amount;
-        toDistribute = totalUSD.mul(66666666666666666666).div(precission); // 1$ = 66.6 BTCL
+
+        if(_asset == 0xDc3d34839ba29c76FA295640CE3A07b77FfA8AD9 || _asset == 0xFfA962796FC63611f8bCc53Fbb24CbA1CB53b273) { // usdt & usdc
+            totalUSD = _amount.mul(100); // with 2 decimals precission
+            toContribute = _amount.mul(1000000);
+            toDistribute = _amount.mul(66666666666666666666);
+        } else if (_asset == 0xb3A570feDE54326Aa5Cc66D6C03bC3c72A6E4C86) { // dai
+            totalUSD = _amount.mul(100); // with 2 decimals precission
+            toContribute = _amount.mul(1000000000000000000);
+            toDistribute = _amount.mul(66666666666666666666);
+        } else {
+            uint256 tokenDecimals = uint256(10 ** uint256(IERC677(_asset).decimals()));
+            uint256 tokenValueInUSD = uint256(price_token).div(uint256(price_dai));
+            uint256 tokenOneDollarWorth = tokenDecimals.div(tokenValueInUSD);
+            totalUSD = _amount.mul(100).div(tokenOneDollarWorth); // USD with 2 extra decimals
+            toContribute = _amount;
+            toDistribute = totalUSD.mul(66666666666666666666).div(100); // 1$ = 66.6 BTCL
+        }
     }
+    
     
     
     /*
