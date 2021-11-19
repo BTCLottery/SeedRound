@@ -12,31 +12,20 @@ import "./utils/interfaces/IWETH.sol";
 import "./utils/chainlink/vendor/SafeMathChainlink.sol";
 import "./utils/chainlink/AggregatorV3Interface.sol";
 
-// ETH MAINNET     
-// PAIRS     DECIMALS               TOKENS                                 CHAINLINK PRICE FEED
-// WBTC / USD	8	0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599   0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c
-// WETH / USD	8	0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2   0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419
-// LINK / USD	8	0x514910771AF9Ca656af840dff83E8264EcF986CA   0x2c1d072e956AFFC0D435Cb7AC38EF18d24d9127c
-//  UNI / USD	8	0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984   0x553303d460EE0afB37EdFf9bE42922D8FF63220e
-//  DAI / USD	8	0x6B175474E89094C44Da98b954EedeAC495271d0F   0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9
-// USDC / USD	8	0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48   0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6
-// USDT / USD	8	0xdAC17F958D2ee523a2206206994597C13D831ec7   0x3E7d1eAB13ad0104d2750B8863b489D65364e32D
-
 contract BtclSeedRound is Context, ReentrancyGuard {
     using SafeMathChainlink for uint256;
     using SafeERC677 for IERC677;
 
-    event TokensPurchased(address purchaser, uint256 btclAmount, uint256 amount);
+    event TokensPurchased(address purchaser, uint256 btclAmount, uint256 usdAmount);
     event DepositedTokens(address from, uint256 value, bytes data);
 
-    IERC677 public immutable btclToken;
+    IERC677 public btclToken;
     address payable public wallet;
     address payable public bonus;
     address WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address USDT = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
     address  DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
-    address FEED = 0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9;
     
     struct UserInfo {
         uint256 totalLockedBTCL;      // Total BTCL Tokens left to be released
@@ -56,10 +45,10 @@ contract BtclSeedRound is Context, ReentrancyGuard {
 
     uint256 public kycUsdLimit = 1500000;       // Max Contribution $15K with 2 extra decimals for precision
     uint256 public kycLimitUplifted = 5000000;  // Max Contribution $50K with 2 extra decimals for precision
-    uint256 public startBlock = 13621630;       // https://etherscan.io/block/countdown/13621630 (15 Nov 2021 UTC-0 = 00:00AM)
-    uint256 public endBlock = 13918423;         // https://etherscan.io/block/countdown/13918423 (1 Jan 2022 UTC-0 = 00:00AM)
-    uint256 public cliffEndingBlock = 14608800; // https://etherscan.io/block/countdown/14608800 (15 April 2022 UTC-0 = 00:00AM)
-    uint256 public blocksPerMonth = 205747;
+    uint256 public startBlock = 13656111;       // https://etherscan.io/block/countdown/13656111 (~21 Nov 2021 UTC = 04:00AM)
+    uint256 public endBlock = 13915000;         // https://etherscan.io/block/countdown/13915000 (~1 Jan 2022 UTC = 00:00AM)
+    uint256 public cliffEndingBlock = 14777777; // https://etherscan.io/block/countdown/14777777 (~15 May 2022 UTC = 00:00AM)
+    uint256 public blocksPerMonth = 200000;
     uint256 public btclDistributed;
     uint256 public totalRaised;
     uint256 public totalBtclClaimed;
@@ -74,7 +63,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
     mapping(address => bool) private kycUplifted;
     mapping(address => UserInfo) public userInfo;
     mapping(address => mapping(uint256 => UserContribution)) public userContribution;
-    mapping(address => mapping(uint256 => uint256)) public totalBTCL; // Total BTCL Tokens released each stage
+    mapping(address => mapping(uint256 => uint256)) public totalBTCL;
     mapping(address => address) public tokensAndFeeds;
 
     /**
@@ -86,14 +75,11 @@ contract BtclSeedRound is Context, ReentrancyGuard {
     }
     
     /*
-     * Bitcoin Lottery - Seed Round in 12 Vesting Stages
-     * StartBlock  = 13621630 (~15 Nov 2021)
-     * EndingBlock = 13918423 (~1 Jan 2022)
-     * CliffBlock  = 14608800 (~15 April 2022)
-     * BTCL_TOKEN_ADDRESS, ["0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599","0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2","0x514910771AF9Ca656af840dff83E8264EcF986CA","0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984","0x6B175474E89094C44Da98b954EedeAC495271d0F","0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48","0xdAC17F958D2ee523a2206206994597C13D831ec7"],["0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c","0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419","0x2c1d072e956AFFC0D435Cb7AC38EF18d24d9127c","0x553303d460EE0afB37EdFf9bE42922D8FF63220e","0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9","0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6","0x3E7d1eAB13ad0104d2750B8863b489D65364e32D"]
+     * Bitcoin Lottery - Seed Round
+     * @param _assets the list of accepted tokens
+     * @param _priceOracles the list of price feeds
      */
-    constructor(address _btclToken, IERC677[] memory _assets, address[] memory _priceOracles) public {
-        btclToken = IERC677(_btclToken);
+    constructor(IERC677[] memory _assets, address[] memory _priceOracles) public {
         wallet = _msgSender();
         
         for(uint256 i = 0; i < _priceOracles.length; i++) {
@@ -103,10 +89,6 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         for(uint256 i = 0; i < vestingPercentages.length; i++) {
             vestingSchedules[i] = cliffEndingBlock.add(blocksPerMonth.mul(i));
         }
-    }
-
-    function currentBlock() public view returns (uint256) {
-        return block.number;
     }
 
     /*
@@ -120,7 +102,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         else { require(tokensAndFeeds[_asset] != address(0), "Asset must be whitelisted"); } // other whitelisted asset price feeds
         
         (, int256 price_token, , , ) = AggregatorV3Interface(tokensAndFeeds[_asset]).latestRoundData();
-        (, int256 price_dai, , , ) = AggregatorV3Interface(FEED).latestRoundData();
+        (, int256 price_dai, , , ) = AggregatorV3Interface(tokensAndFeeds[DAI]).latestRoundData();
 
         toContribute = _amount;
         
@@ -349,7 +331,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
         uint256 allowedPercent;
         uint256 currentStage;
         
-        for (uint8 i = 0; i < vestingSchedules.length; i++) {
+        for(uint8 i = 0; i < vestingSchedules.length; i++) {
             if (block.number >= vestingSchedules[i]) {
                 allowedPercent = allowedPercent.add(vestingPercentages[i]);
                 currentStage = i;
@@ -382,7 +364,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
      * @param _kycUplift whitelisted address owner has provided sources of funds and was uplifted to contribute up to $50K.
      */
     function multiKycWhitelisting(address[] memory _addresses, bool[] memory _whitelisted, bool[] memory _kycUplift) public onlyTeam returns (bool success) {
-        for (uint256 i = 0; i < _addresses.length; i++) {
+        for(uint256 i = 0; i < _addresses.length; i++) {
             kyc[_addresses[i]] = _whitelisted[i];
             kycUplifted[_addresses[i]] = _kycUplift[i];
         }
@@ -415,6 +397,15 @@ contract BtclSeedRound is Context, ReentrancyGuard {
     }
     
     /**
+     * @dev Team helper function used to upgrade the BTCL Governance Token.
+     * Future Upgrades: Gassless DAO Voting, Approval Signatures with no GAS Costs, Merkle Proofs.
+     * @param _btclToken The new upgraded BTCL Governance Token.
+    */
+    function updateBtclTokenAddress(address payable _btclToken) public onlyTeam {
+        btclToken = IERC677(_btclToken);
+    }
+    
+    /**
      * @dev Team helper function used to redistribute undistributed BTCL Tokens back into the Community Bonus Reserve.
      */
     function redistributeTokens() public onlyTeam {
@@ -427,7 +418,7 @@ contract BtclSeedRound is Context, ReentrancyGuard {
      * @dev ERC677 TokenFallback Function.
      * @param _wallet The team address can send BTCL tokens to the Seed Round Contract.
      * @param _value The amount of tokens sent by the team to the BTCL Seed Round Contract.
-     * @param _data  The transaction metadata.
+     * @param _data The transaction metadata.
      */
     function onTokenTransfer(address _wallet, uint256 _value, bytes memory _data) public {
         require(_msgSender() == address(btclToken), "Contract only accepts BTCL Tokens");
