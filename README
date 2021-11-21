@@ -1,3 +1,9 @@
-# BTC LOTTERY - Seed Round with Chainlink Price Feeds and Vesting
-# BTCL TOKEN - Deployment delayed, upgrading old built-in Compound Governance with EIP-2612 for Gasless Approvals and Governance.
+BTC LOTTERY - Seed Round with Chainlink Price Feeds and Vesting
+
+# BTCL TOKEN - Currently uses Onchain Compound Governance Model
+             - The team is working on upgrading the token with EIP-2612 Offchain Signatures
+             - The new Oppenzeppelin Offchain Signatures allow Gasless Approvals and Governance
 # SEED ROUND - https://etherscan.io/address/0x0561b1498fa358a1b5e8f21844c98c9de01161b3
+
+Website: https://btclottery.io
+Seed Round: https://igo.btclottery.io/seed
