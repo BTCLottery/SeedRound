@@ -1,7 +1,3 @@
 # BTC LOTTERY - Seed Round with Chainlink Price Feeds and Vesting
-
-# BTCLTOKEN - Test Deployment for BTCLTOKEN
-# MOCKERC20 - Test Deployment for (WBTC,WETH,LINK,BNB,UNI,DAI,USDC,USDT)
-# SEEDROUND - Test Deployment for BTCL Token Seed Round
-
-Add your own Private Key to truffle-config.js and deploy all tokens to Kovan Testnet and check
+# BTCL TOKEN - Deployment delayed, upgrading old built-in Compound Governance with EIP-2612 for Gasless Approvals and Governance.
+# SEED ROUND - https://etherscan.io/address/0x0561b1498fa358a1b5e8f21844c98c9de01161b3
